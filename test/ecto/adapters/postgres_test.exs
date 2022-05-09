@@ -15,6 +15,7 @@ defmodule Ecto.Adapters.PostgresTest do
       field :z, :integer
       field :w, {:array, :integer}
       field :meta, :map
+      field :posted_at, :utc_datetime
 
       has_many :comments, Ecto.Adapters.PostgresTest.Schema2,
         references: :x,
