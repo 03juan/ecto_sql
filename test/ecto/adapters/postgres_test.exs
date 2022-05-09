@@ -109,17 +109,52 @@ defmodule Ecto.Adapters.PostgresTest do
     assert all(query) == ~s{SELECT s0."x", s0."z" FROM (SELECT ss0."x" AS "x", ss0."z" AS "z" FROM (SELECT ssp0."x" AS "x", ssp0."y" AS "z" FROM "posts" AS ssp0) AS ss0) AS s0}
   end
 
-  test "select cast to named column type" do
-    named_typed_column = from(Schema, as: :s) |> select([s: s], type(s.x, s.x)) |> plan()
-    assert all(named_typed_column) == ~s{SELECT s0."x"::bigint FROM "schema" AS s0}
+  describe "select/3 cast to named column type" do
+    test "with basic" do
+      query = from(Schema, as: :s) |> select([s: s], type(s.x, s.x)) |> plan()
 
-    named_typed_column_joined =
-      from(Schema2, as: :s2)
-      |> join(:inner, [s2: s2], assoc(s2, :post), as: :s)
-      |> select([s: s], type(s.x, s.x))
-      |> plan()
+      assert all(query) == ~s{SELECT s0."x"::bigint FROM "schema" AS s0}
+    end
 
-    assert all(named_typed_column_joined) =~ ~s{SELECT s1."x"::bigint}
+    test "with binary operation" do
+      query = from(Schema, as: :s) |> select([s: s], type((s.x + s.x), s.x)) |> plan()
+
+      assert all(query) == ~s{SELECT (s0."x" + s0."x")::bigint FROM "schema" AS s0}
+    end
+
+    test "with interpolated binary operation" do
+      value = 1
+      query = from(Schema, as: :s) |> select([s: s], type((s.x + ^value), s.x)) |> plan()
+
+      assert all(query) == ~s{SELECT (s0."x" + $1)::bigint FROM "schema" AS s0}
+    end
+
+    test "with fragment" do
+      query =
+        from(Schema, as: :s)
+        |> select([s: s], type(fragment("?", s.posted_at), s.posted_at))
+        |> plan()
+
+      assert all(query) == ~s{SELECT s0."posted_at"::timestamp FROM "schema" AS s0}
+
+      query =
+        from(Schema, as: :s)
+        |> select([s: s], type(fragment("date_trunc('day', ?)", datetime_add(s.posted_at, -1, "day")), s.posted_at))
+        |> plan()
+
+      assert all(query) == ~s{SELECT date_trunc('day', s0."posted_at"::timestamp + (-1::decimal::numeric * interval '1 day'))::timestamp FROM "schema" AS s0}
+
+    end
+
+    test "with join" do
+      query =
+        from(Schema2, as: :s2)
+        |> join(:inner, [s2: s2], assoc(s2, :post), as: :s)
+        |> select([s: s], type(s.x, s.x))
+        |> plan()
+
+      assert all(query) =~ ~s{SELECT s1."x"::bigint FROM "schema2" AS s0 INNER JOIN "schema" AS s1 ON s1."x" = s0."z"}
+    end
   end
 
   test "CTE" do
